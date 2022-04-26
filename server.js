@@ -3,6 +3,7 @@ const app = express()
 const cors = require('cors')
 const mongoose = require('mongoose')
 const User = require('./models/User')
+const Exercise = require('./models/Exercise')
 require('dotenv').config()
 
 app.use(cors())
@@ -23,6 +24,28 @@ app.post('/api/users', async (req, res) => {
 
   const { _id, username } = user
   res.json({ _id, username })
+})
+
+app.post('/api/users/:_id/exercises', async (req, res) => {
+  try {
+    // find user by id
+    const { _id } = req.params
+    const user = await User.findById(_id)
+
+    const reqDate = new Date(req.body.date)
+
+    const newExercise = await Exercise.create({
+      ...req.body,
+      date: reqDate,
+      username: user.username,
+    })
+
+    const { description, duration, date, username } = newExercise
+    res.json({ description, duration, date: date.toDateString(), username, _id: user._id })
+  } catch (err) {
+    console.log(err)
+    res.send(err)
+  }
 })
 
 const start = async () => {
