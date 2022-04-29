@@ -5,7 +5,6 @@ const mongoose = require('mongoose')
 const User = require('./models/User')
 const Exercise = require('./models/Exercise')
 require('dotenv').config()
-require('express-async-errors')
 
 app.use(cors())
 app.use(express.static('public'))
@@ -15,40 +14,53 @@ app.get('/', (req, res) => {
   res.sendFile(__dirname + '/views/index.html')
 })
 
-app.post('/api/users', async (req, res) => {
-  const { username: reqUsername } = req.body
-  let user = await User.findOne({ username: reqUsername })
-
-  if (!user) {
-    user = await User.create({ username })
-  }
-
-  const { _id, username } = user
-  res.json({ _id, username })
+app.post('/api/users', (req, res, next) => {
+  const { username } = req.body
+  // first, check if user in db exist
+  User.findOne({ username }, (err, userInDb) => {
+    if (err) return next(err)
+    if (!username) return next({ status: 400, message: 'Please provide username' })
+    // if exist, immediately send user
+    if (userInDb) {
+      return res.json({ _id: userInDb._id, username: userInDb.username })
+    }
+    // if not exist yet, then create new user
+    User.create({ username }, (err, newUser) => {
+      if (err) return next(err)
+      return res.json({ _id: newUser._id, username: newUser.username })
+    })
+  })
 })
 
-const checkUser = async (req, res, next) => {
+const checkUser = (req, res, next) => {
   // find user by id
   const { _id } = req.params
-  const user = await User.findById(_id)
-  req.user = user
-  next()
+  User.findById(_id, (err, user) => {
+    if (err) {
+      throw { status: 401, error: 'unauthorize' }
+    }
+    req.user = user
+    next()
+  })
 }
 
-app.post('/api/users/:_id/exercises', checkUser, async (req, res) => {
+app.post('/api/users/:_id/exercises', checkUser, (req, res) => {
   const reqDate = new Date(req.body.date)
 
-  const newExercise = await Exercise.create({
-    ...req.body,
-    date: reqDate,
-    username: req.user.username,
-  })
-
-  const { description, duration, date, username } = newExercise
-  res.json({ description, duration, date: date.toDateString(), username, _id: req.user._id })
+  Exercise.create(
+    {
+      ...req.body,
+      date: reqDate,
+      username: req.user.username,
+    },
+    (err, newExercise) => {
+      const { description, duration, date, username } = newExercise
+      res.json({ description, duration, date: date.toDateString(), username, _id: req.user._id })
+    }
+  )
 })
 
-app.get('/api/users/:_id/logs', checkUser, async (req, res) => {
+app.get('/api/users/:_id/logs', checkUser, (req, res) => {
   let { limit, from, to } = req.query
   let resBody = {
     _id: req.user._id,
@@ -73,20 +85,22 @@ app.get('/api/users/:_id/logs', checkUser, async (req, res) => {
     resBody.to = new Date(to).toDateString()
   }
 
-  const exercises = (await query).map((exercise) => ({
-    ...exercise._doc,
-    date: exercise.date.toDateString(),
-  }))
+  query.exec((err, exercises) => {
+    exercises = exercises.map((exercise) => ({
+      ...exercise._doc,
+      date: exercise.date.toDateString(),
+    }))
 
-  resBody.count = exercises.length
-  resBody.log = exercises
+    resBody.count = exercises.length
+    resBody.log = exercises
 
-  res.json(resBody)
+    res.json(resBody)
+  })
 })
 
 // error handling
 app.use((err, req, res, next) => {
-  res.send(err)
+  res.status(err.status || 500).send(err)
 })
 
 const start = async () => {
