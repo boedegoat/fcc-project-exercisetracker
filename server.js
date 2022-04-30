@@ -53,7 +53,7 @@ app.post('/api/users/:_id/exercises', checkUser, (req, res, next) => {
   })
 })
 
-app.get('/api/users/:_id/logs', checkUser, (req, res) => {
+app.get('/api/users/:_id/logs', checkUser, (req, res, next) => {
   let { limit, from, to } = req.query
   let resBody = {
     _id: req.user._id,
@@ -79,7 +79,8 @@ app.get('/api/users/:_id/logs', checkUser, (req, res) => {
   }
 
   query.exec((err, exercises) => {
-    exercises = exercises.map((exercise) => ({
+    if (err) return next(err)
+    exercises = exercises?.map((exercise) => ({
       ...exercise._doc,
       date: exercise.date.toDateString(),
     }))
