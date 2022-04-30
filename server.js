@@ -4,6 +4,7 @@ const cors = require('cors')
 const mongoose = require('mongoose')
 const User = require('./models/User')
 const Exercise = require('./models/Exercise')
+const checkUser = require('./middleware/checkUser')
 require('dotenv').config()
 
 app.use(cors())
@@ -19,7 +20,7 @@ app.post('/api/users', (req, res, next) => {
   // first, check if user in db exist
   User.findOne({ username }, (err, userInDb) => {
     if (err) return next(err)
-    if (!username) return next({ status: 400, message: 'Please provide username' })
+    if (!username) return next({ status: 400, error: 'Please provide username' })
     // if exist, immediately send user
     if (userInDb) {
       return res.json({ _id: userInDb._id, username: userInDb.username })
@@ -32,32 +33,24 @@ app.post('/api/users', (req, res, next) => {
   })
 })
 
-const checkUser = (req, res, next) => {
-  // find user by id
-  const { _id } = req.params
-  User.findById(_id, (err, user) => {
-    if (err) {
-      throw { status: 401, error: 'unauthorize' }
-    }
-    req.user = user
-    next()
+app.post('/api/users/:_id/exercises', checkUser, (req, res, next) => {
+  req.body.username = req.user.username
+  const { date } = req.body
+  // if user not providing date, set it to current time
+  if (!date) {
+    req.body.date = new Date()
+  }
+  new Exercise(req.body).save((err, newExercise) => {
+    if (err) return next(err)
+    const { username, description, duration, date } = newExercise._doc
+    res.json({
+      _id: req.user._id,
+      username,
+      description,
+      duration,
+      date: date.toDateString(),
+    })
   })
-}
-
-app.post('/api/users/:_id/exercises', checkUser, (req, res) => {
-  const reqDate = new Date(req.body.date)
-
-  Exercise.create(
-    {
-      ...req.body,
-      date: reqDate,
-      username: req.user.username,
-    },
-    (err, newExercise) => {
-      const { description, duration, date, username } = newExercise
-      res.json({ description, duration, date: date.toDateString(), username, _id: req.user._id })
-    }
-  )
 })
 
 app.get('/api/users/:_id/logs', checkUser, (req, res) => {
